@@ -1,7 +1,59 @@
 @startuml
-Alice -> Bob: Authentication Request
-Bob --> Alice: Authentication Response
 
-Alice -> Bob: Another authentication Request
-Alice <-- Bob: another authentication Response
+autonumber
+
+header Sequence diagram
+
+actor User
+control Front
+boundary Gravitee
+control Back
+database Keycloak
+
+title Example of how an OAuth request can be handled through Gravitee+Keycloak
+
+User -> Front : Secured API request (for example: by an AJAX request on a page)
+Front -> Front : Checks whether user access_token exists in memory
+
+alt access_token is not defined
+  Front -> Front : Checks whether user refresh_token exists in memory
+  alt refresh_token is not defined
+    Front -> User : Redirect to login form
+    User -> Front : Login form submission
+    Front -> Gravitee : Authentication POST request
+    Gravitee -> Keycloak : Proxified authentication request
+    alt Credentials are valid
+      Keycloak -> Gravitee : 200 response with a JWT that includes\n- access_token\n- refresh_token\n- Possible custom Keycloak user attributes
+			Gravitee -> Front  : 200 with JWT
+      Front -> Front : In-memory JWT storage (possibly local/session storage as well at this point)
+      Front -> User : Redirects to previous page\n(back to the starting step)
+    else Invalid credentials
+      Keycloak -> Gravitee : 401 response
+      Gravitee -> Front : 401 response
+      Front -> User : Error message
+		end
+
+  else refresh_token is defined
+    Front -> Gravitee : Token refresh POST request
+    Gravitee -> Keycloak : Proxified token refresh request
+    alt session has not expired
+      ... same as «Credentials are valid» ...
+		else Authentification expirée (ou annulée)
+      ... same as «refresh_token is not defined» ...
+		end
+	end
+else access_token is defined
+  Front -> Gravitee : Secured API request with «Authorization: Bearer access_token» header
+  Gravitee -> Keycloak : access_token introspection to ensure it is still fresh
+  alt Invalid access_token
+		Gravitee -> Front: Réponse 401
+    Front -> User : Redirect to login form (see above)
+	else Valid access_token
+    Gravitee -> Backend : Proxified secured API request
+    Backend -> Gravitee : Response
+    Gravitee -> Front : Proxified response
+    Front -> User : Anything done using the proxified response ;)
+	end
+end
+
 @enduml
